@@ -66,7 +66,7 @@ export async function executeReopen(interaction: ChatInputCommandInteraction) {
   const member = await interaction.guild.members.fetch(interaction.user.id);
   const isStaff =
     interaction.guild.ownerId === interaction.user.id ||
-    member.roles.cache.has(ticket.reason.supportRoleId);
+    (ticket.reason ? member.roles.cache.has(ticket.reason.supportRoleId) : false);
 
   const guildData = await prisma.guild.findUnique({ where: { id: interaction.guild.id } });
   const isAdmin = guildData?.setupRoleId ? member.roles.cache.has(guildData.setupRoleId) : false;
@@ -109,7 +109,7 @@ export async function executeDelete(interaction: ChatInputCommandInteraction) {
   const member = await interaction.guild.members.fetch(interaction.user.id);
   const isStaff =
     interaction.guild.ownerId === interaction.user.id ||
-    member.roles.cache.has(ticket.reason.supportRoleId);
+    (ticket.reason ? member.roles.cache.has(ticket.reason.supportRoleId) : false);
 
   const guildData = await prisma.guild.findUnique({ where: { id: interaction.guild.id } });
   const isAdmin = guildData?.setupRoleId ? member.roles.cache.has(guildData.setupRoleId) : false;
@@ -153,7 +153,7 @@ export async function executeAdd(interaction: ChatInputCommandInteraction) {
 
   const isStaff =
     interaction.guild.ownerId === interaction.user.id ||
-    member.roles.cache.has(ticket.reason.supportRoleId) ||
+    (ticket.reason ? member.roles.cache.has(ticket.reason.supportRoleId) : false) ||
     (guildData?.setupRoleId ? member.roles.cache.has(guildData.setupRoleId) : false);
 
   if (!isStaff) {
@@ -201,7 +201,7 @@ export async function executeRemove(interaction: ChatInputCommandInteraction) {
 
   const isStaff =
     interaction.guild.ownerId === interaction.user.id ||
-    member.roles.cache.has(ticket.reason.supportRoleId) ||
+    (ticket.reason ? member.roles.cache.has(ticket.reason.supportRoleId) : false) ||
     (guildData?.setupRoleId ? member.roles.cache.has(guildData.setupRoleId) : false);
 
   if (!isStaff) {

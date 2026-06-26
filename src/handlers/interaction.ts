@@ -148,7 +148,7 @@ export async function handleTicketButton(interaction: ButtonInteraction, action:
     const guildData = await prisma.guild.findUnique({ where: { id: interaction.guild.id } });
     const isStaff =
       interaction.guild.ownerId === interaction.user.id ||
-      member.roles.cache.has(ticket.reason.supportRoleId) ||
+      (ticket.reason ? member.roles.cache.has(ticket.reason.supportRoleId) : false) ||
       (guildData?.setupRoleId ? member.roles.cache.has(guildData.setupRoleId) : false);
 
     if (!isStaff) {
@@ -177,7 +177,7 @@ export async function handleTicketButton(interaction: ButtonInteraction, action:
     const guildData = await prisma.guild.findUnique({ where: { id: interaction.guild.id } });
     const isStaff =
       interaction.guild.ownerId === interaction.user.id ||
-      member.roles.cache.has(ticket.reason.supportRoleId) ||
+      (ticket.reason ? member.roles.cache.has(ticket.reason.supportRoleId) : false) ||
       (guildData?.setupRoleId ? member.roles.cache.has(guildData.setupRoleId) : false);
 
     if (!isStaff) {
@@ -206,7 +206,7 @@ export async function handleTicketButton(interaction: ButtonInteraction, action:
     const guildData = await prisma.guild.findUnique({ where: { id: interaction.guild.id } });
     const isStaff =
       interaction.guild.ownerId === interaction.user.id ||
-      member.roles.cache.has(ticket.reason.supportRoleId) ||
+      (ticket.reason ? member.roles.cache.has(ticket.reason.supportRoleId) : false) ||
       (guildData?.setupRoleId ? member.roles.cache.has(guildData.setupRoleId) : false);
     const isCreator = interaction.user.id === ticket.creatorId;
 
@@ -215,7 +215,7 @@ export async function handleTicketButton(interaction: ButtonInteraction, action:
     }
 
     const channel = interaction.channel as any;
-    const result = await generateTranscript(interaction.guild, ticket, channel);
+    const result = await generateTranscript(interaction.guild, ticket as any, channel);
 
     return interaction.editReply({
       embeds: [

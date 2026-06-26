@@ -224,7 +224,7 @@ export async function closeTicket(
   }).catch(console.error);
 
   // Generate and send transcript
-  const transcriptResult = await generateTranscript(guild, ticket, channel);
+  const transcriptResult = await generateTranscript(guild, ticket as any, channel);
 
   // Closed embed in channel
   const closedEmbed = new EmbedBuilder()
@@ -261,7 +261,7 @@ export async function closeTicket(
       .addFields(
         { name: "Tiket", value: `#${ticket.id}`, inline: true },
         { name: "Ditutup oleh", value: closedBy.toString(), inline: true },
-        { name: "Alasan", value: ticket.reason.label, inline: true },
+        { name: "Alasan", value: ticket.reason?.label ?? "Tanpa Alasan", inline: true },
         {
           name: "Transkrip",
           value: transcriptResult.success
@@ -342,7 +342,7 @@ export async function reopenTicket(
       .addFields(
         { name: "Tiket", value: `#${ticket.id}`, inline: true },
         { name: "Dibuka oleh", value: reopenedBy.toString(), inline: true },
-        { name: "Alasan", value: ticket.reason.label, inline: true }
+        { name: "Alasan", value: ticket.reason?.label ?? "Tanpa Alasan", inline: true }
       )
       .setTimestamp()
   );
@@ -380,7 +380,7 @@ export async function deleteTicket(
       .addFields(
         { name: "Tiket", value: `#${ticket.id}`, inline: true },
         { name: "Dihapus oleh", value: deletedBy.toString(), inline: true },
-        { name: "Alasan", value: ticket.reason.label, inline: true },
+        { name: "Alasan", value: ticket.reason?.label ?? "Tanpa Alasan", inline: true },
         { name: "Pembuat Tiket", value: `<@${ticket.creatorId}>`, inline: true }
       )
       .setTimestamp()

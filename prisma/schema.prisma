@@ -37,7 +37,7 @@ model Ticket {
   guildId   String
   channelId String   @unique
   creatorId String
-  reasonId  Int
+  reasonId  Int?
 
   status     String    @default("OPEN")
   createdAt  DateTime  @default(now())
@@ -45,7 +45,7 @@ model Ticket {
   closedById String?
 
   guild    Guild           @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  reason   TicketReason    @relation(fields: [reasonId], references: [id])
+  reason   TicketReason?   @relation(fields: [reasonId], references: [id], onDelete: SetNull)
   messages TicketMessage[]
 }
 

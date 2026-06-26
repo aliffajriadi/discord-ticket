@@ -211,12 +211,19 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const ticketCount = await prisma.ticket.count({
-      where: { reasonId: reason.id },
+      where: { 
+        reasonId: reason.id,
+        status: "OPEN" 
+      },
     });
 
     if (ticketCount > 0) {
       return interaction.reply({
-        embeds: [errorEmbed(`Tidak dapat menghapus alasan **${reason.label}** karena masih ada ${ticketCount} tiket yang terhubung. Hapus tiket-tiket tersebut terlebih dahulu.`)],
+        embeds: [
+          errorEmbed(
+            `Tidak dapat menghapus alasan **${reason.label}** karena masih ada ${ticketCount} tiket yang sedang AKTIF (OPEN). Tutup tiket-tiket tersebut terlebih dahulu.`,
+          ),
+        ],
         ephemeral: true,
       });
     }

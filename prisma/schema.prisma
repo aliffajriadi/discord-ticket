@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Guild {
+  id           String   @id
+  logChannelId String?
+  setupRoleId  String?
+  createdAt    DateTime @default(now())
+
+  reasons TicketReason[]
+  tickets Ticket[]
+}
+
+model TicketReason {
+  id            Int     @id @default(autoincrement())
+  guildId       String
+  label         String
+  value         String
+  description   String?
+  categoryId    String
+  supportRoleId String
+
+  guild   Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+
+  @@unique([guildId, value])
+}
+
+model Ticket {
+  id        Int      @id @default(autoincrement())
+  guildId   String
+  channelId String   @unique
+  creatorId String
+  reasonId  Int
+
+  status     String    @default("OPEN")
+  createdAt  DateTime  @default(now())
+  closedAt   DateTime?
+  closedById String?
+
+  guild    Guild           @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  reason   TicketReason    @relation(fields: [reasonId], references: [id])
+  messages TicketMessage[]
+}
+
+model TicketMessage {
+  id          Int      @id @default(autoincrement())
+  ticketId    Int
+  authorId    String
+  content     String
+  attachments String?
+  createdAt   DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}

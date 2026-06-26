@@ -1,0 +1,37 @@
+{
+  "name": "dc-ticket-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Discord Advanced Ticket Bot with AI Agent / Support System",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "deploy": "tsx src/deploy.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:generate": "prisma generate"
+  },
+  "keywords": [
+    "discord",
+    "ticket",
+    "bot"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "@prisma/adapter-libsql": "^7.8.0",
+    "@prisma/client": "^6.10.1",
+    "discord.js": "^14.21.0",
+    "dotenv": "^16.5.0",
+    "prisma": "^6.10.1",
+    "tsx": "^4.20.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.32",
+    "typescript": "^5.8.3"
+  },
+  "type": "module"
+}

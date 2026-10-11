@@ -1,82 +1,90 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, TextChannel, ChannelType } from "discord.js";
+import { SlashCommandBuilder, ChannelType, EmbedBuilder } from "discord.js";
 import { ensureGuild, hasSetupPermission, errorEmbed, successEmbed } from "../lib/utils.js";
+import { getConfig } from "../lib/guildConfig.js";
 import prisma from "../lib/prisma.js";
+import { Command } from "../types.js";
 
-export const data = new SlashCommandBuilder()
+const data = new SlashCommandBuilder()
   .setName("setup")
-  .setDescription("Konfigurasi bot tiket")
+  .setDescription("Konfigurasi bot")
   .addSubcommand((sub) =>
     sub
       .setName("log-channel")
-      .setDescription("Atur channel untuk logging aktivitas tiket")
+      .setDescription("Atur channel log aktivitas tiket")
       .addChannelOption((opt) =>
-        opt
-          .setName("channel")
-          .setDescription("Channel tujuan log")
-          .addChannelTypes(ChannelType.GuildText)
-          .setRequired(true)
+        opt.setName("channel").setDescription("Channel tujuan log").addChannelTypes(ChannelType.GuildText).setRequired(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("mod-log")
+      .setDescription("Atur channel log moderasi (ban, kick, lockdown, dll)")
+      .addChannelOption((opt) =>
+        opt.setName("channel").setDescription("Channel tujuan log").addChannelTypes(ChannelType.GuildText).setRequired(true)
       )
   )
   .addSubcommand((sub) =>
     sub
       .setName("admin-role")
-      .setDescription("Atur role yang dapat mengkonfigurasi bot")
-      .addRoleOption((opt) =>
-        opt.setName("role").setDescription("Role admin bot").setRequired(true)
-      )
-  );
+      .setDescription("Atur role yang dapat mengkonfigurasi bot (hanya owner)")
+      .addRoleOption((opt) => opt.setName("role").setDescription("Role admin bot").setRequired(true))
+  )
+  .addSubcommand((sub) => sub.setName("view").setDescription("Lihat konfigurasi bot saat ini"));
 
-export async function execute(interaction: ChatInputCommandInteraction) {
-  if (!interaction.guild || !interaction.member) {
+async function execute(interaction: import("discord.js").ChatInputCommandInteraction) {
+  if (!interaction.inCachedGuild()) {
     return interaction.reply({ embeds: [errorEmbed("Command ini hanya bisa digunakan di dalam server.")], ephemeral: true });
   }
-
   await ensureGuild(interaction.guild.id);
-
-  // Server owner can always use this command; others need setup role
-  const hasPermission = await hasSetupPermission(interaction.guild, interaction.user.id);
   const subcommand = interaction.options.getSubcommand();
 
-  // For admin-role subcommand, only server owner can set it
   if (subcommand === "admin-role" && interaction.guild.ownerId !== interaction.user.id) {
-    return interaction.reply({
-      embeds: [errorEmbed("Hanya **Server Owner** yang dapat mengatur admin role.")],
-      ephemeral: true,
-    });
+    return interaction.reply({ embeds: [errorEmbed("Hanya **Server Owner** yang dapat mengatur admin role.")], ephemeral: true });
+  }
+  if (!(await hasSetupPermission(interaction.guild, interaction.member))) {
+    return interaction.reply({ embeds: [errorEmbed("Kamu tidak memiliki izin untuk menjalankan command ini.")], ephemeral: true });
   }
 
-  if (!hasPermission) {
-    return interaction.reply({
-      embeds: [errorEmbed("Kamu tidak memiliki izin untuk menjalankan command ini.")],
-      ephemeral: true,
-    });
-  }
+  const where = { id: interaction.guild.id };
 
-  if (subcommand === "log-channel") {
-    const channel = interaction.options.getChannel("channel", true) as TextChannel;
-
+  if (subcommand === "log-channel" || subcommand === "mod-log") {
+    const channel = interaction.options.getChannel("channel", true);
     await prisma.guild.update({
-      where: { id: interaction.guild.id },
-      data: { logChannelId: channel.id },
+      where,
+      data: subcommand === "log-channel" ? { logChannelId: channel.id } : { modLogChannelId: channel.id },
     });
-
     return interaction.reply({
-      embeds: [successEmbed(`Log channel berhasil diatur ke ${channel.toString()}.`)],
+      embeds: [successEmbed(`${subcommand === "log-channel" ? "Log tiket" : "Log moderasi"} diatur ke ${channel}.`)],
       ephemeral: true,
     });
   }
 
   if (subcommand === "admin-role") {
     const role = interaction.options.getRole("role", true);
+    await prisma.guild.update({ where, data: { setupRoleId: role.id } });
+    return interaction.reply({ embeds: [successEmbed(`Admin role berhasil diatur ke ${role}.`)], ephemeral: true });
+  }
 
-    await prisma.guild.update({
-      where: { id: interaction.guild.id },
-      data: { setupRoleId: role.id },
-    });
-
+  if (subcommand === "view") {
+    const g = await prisma.guild.findUnique({ where });
+    const cfg = await getConfig(interaction.guild);
+    const show = (id: string | null | undefined, kind: "#" | "@&") => (id ? `<${kind}${id}>` : "`belum diatur`");
     return interaction.reply({
-      embeds: [successEmbed(`Admin role berhasil diatur ke ${role.toString()}.`)],
+      embeds: [
+        new EmbedBuilder()
+          .setColor(cfg.color)
+          .setTitle(`⚙️ Konfigurasi ${interaction.guild.name}`)
+          .addFields(
+            { name: "Log Tiket", value: show(g?.logChannelId, "#"), inline: true },
+            { name: "Log Moderasi", value: show(g?.modLogChannelId, "#"), inline: true },
+            { name: "Admin Role", value: show(g?.setupRoleId, "@&"), inline: true },
+            { name: "Total Tiket", value: String(g?.ticketCounter ?? 0), inline: true },
+            { name: "Total Kasus", value: String(g?.caseCounter ?? 0), inline: true }
+          ),
+      ],
       ephemeral: true,
     });
   }
 }
+
+export const commands: Command[] = [{ data, execute }];

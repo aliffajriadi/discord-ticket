@@ -12,8 +12,9 @@ import {
   successEmbed,
 } from "../lib/utils.js";
 import prisma from "../lib/prisma.js";
+import { Command } from "../types.js";
 
-export const data = new SlashCommandBuilder()
+const data = new SlashCommandBuilder()
   .setName("reason")
   .setDescription("Kelola alasan tiket")
   .addSubcommand((sub) =>
@@ -67,8 +68,8 @@ export const data = new SlashCommandBuilder()
       ),
   );
 
-export async function execute(interaction: ChatInputCommandInteraction) {
-  if (!interaction.guild) {
+async function execute(interaction: ChatInputCommandInteraction) {
+  if (!interaction.inCachedGuild()) {
     return interaction.reply({
       embeds: [errorEmbed("Command ini hanya bisa digunakan di server.")],
       ephemeral: true,
@@ -78,7 +79,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await ensureGuild(interaction.guild.id);
   const hasPermission = await hasSetupPermission(
     interaction.guild,
-    interaction.user.id,
+    interaction.member,
   );
 
   if (!hasPermission) {
@@ -240,3 +241,5 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   }
 }
+
+export const commands: Command[] = [{ data, execute }];

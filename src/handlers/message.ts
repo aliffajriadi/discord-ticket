@@ -1,32 +1,22 @@
 import { Message } from "discord.js";
-import prisma from "../lib/prisma.js";
+import { enqueueTicketMessage } from "../lib/messageQueue.js";
+import { handleStickyMessage } from "../lib/sticky.js";
+import { handleAutomod } from "../lib/automod.js";
 
 /**
- * Saves a message to the database if it belongs to an active ticket.
- * This is called on every messageCreate event.
+ * Dipanggil pada setiap messageCreate:
+ * - AutoMod menghapus spam (pesan yang dihapus tidak diproses lagi)
+ * - menyimpan pesan tiket (batch) untuk transkrip
+ * - mendorong sticky note ke paling bawah
  */
 export async function handleMessage(message: Message) {
-  // Ignore bots and DMs
-  if (message.author.bot || !message.guild) return;
-
-  const ticket = await prisma.ticket.findFirst({
-    where: {
-      channelId: message.channel.id,
-      guildId: message.guild.id,
-      status: "OPEN",
-    },
+  if (!message.guild || message.system) return;
+  // Gagalnya AutoMod tidak boleh menghentikan penyimpanan transkrip / sticky
+  const removed = await handleAutomod(message).catch((err) => {
+    console.error("[automod] Error:", err);
+    return false;
   });
+  if (removed) return;
 
-  if (!ticket) return;
-
-  const attachmentUrls = message.attachments.map((a) => a.url);
-
-  await prisma.ticketMessage.create({
-    data: {
-      ticketId: ticket.id,
-      authorId: message.author.id,
-      content: message.content || "[No text content]",
-      attachments: attachmentUrls.length > 0 ? JSON.stringify(attachmentUrls) : null,
-    },
-  });
+  await Promise.all([enqueueTicketMessage(message), handleStickyMessage(message)]);
 }

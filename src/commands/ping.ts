@@ -1,14 +1,15 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
 import { E } from "../config/emoji.js";
+import { Command } from "../types.js";
 
-export const data = new SlashCommandBuilder()
-  .setName("ping")
-  .setDescription("Test apakah bot merespon interaction");
+const data = new SlashCommandBuilder().setName("ping").setDescription("Cek latency bot");
 
-export async function execute(interaction: ChatInputCommandInteraction) {
+async function execute(interaction: ChatInputCommandInteraction) {
   const latency = Date.now() - interaction.createdTimestamp;
   await interaction.reply({
     content: `${E.PING} Pong! Latency: **${latency}ms** | API: **${interaction.client.ws.ping}ms**`,
     ephemeral: true,
   });
 }
+
+export const commands: Command[] = [{ data, execute }];

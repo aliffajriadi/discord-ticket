@@ -8,13 +8,24 @@ datasource db {
 }
 
 model Guild {
-  id           String   @id
-  logChannelId String?
-  setupRoleId  String?
-  createdAt    DateTime @default(now())
+  id              String   @id
+  logChannelId    String?
+  modLogChannelId String?
+  setupRoleId     String?
+  ticketCounter   Int      @default(0)
+  caseCounter     Int      @default(0)
+  // Kustomisasi dari dashboard (JSON string)
+  accentColor     Int?
+  texts           String?
+  emojis          String?
+  createdAt       DateTime @default(now())
 
-  reasons TicketReason[]
-  tickets Ticket[]
+  reasons   TicketReason[]
+  tickets   Ticket[]
+  cases     ModCase[]
+  stickies  StickyNote[]
+  lockdowns Lockdown[]
+  automod   AutoMod?
 }
 
 model TicketReason {
@@ -33,11 +44,17 @@ model TicketReason {
 }
 
 model Ticket {
-  id        Int      @id @default(autoincrement())
-  guildId   String
-  channelId String   @unique
-  creatorId String
-  reasonId  Int?
+  id          Int     @id @default(autoincrement())
+  number      Int?
+  guildId     String
+  channelId   String  @unique
+  creatorId   String
+  creatorTag  String?
+  reasonId    Int?
+  reasonLabel String?
+  // Disalin saat tiket dibuat, supaya staff tetap berhak walau alasan tiket dihapus
+  supportRoleId String?
+  claimedById String?
 
   status     String    @default("OPEN")
   createdAt  DateTime  @default(now())
@@ -47,15 +64,98 @@ model Ticket {
   guild    Guild           @relation(fields: [guildId], references: [id], onDelete: Cascade)
   reason   TicketReason?   @relation(fields: [reasonId], references: [id], onDelete: SetNull)
   messages TicketMessage[]
+
+  @@index([guildId, status])
 }
 
 model TicketMessage {
   id          Int      @id @default(autoincrement())
   ticketId    Int
   authorId    String
+  authorTag   String?
+  authorBot   Boolean  @default(false)
   content     String
   attachments String?
   createdAt   DateTime @default(now())
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+}
+
+model ModCase {
+  id          Int      @id @default(autoincrement())
+  guildId     String
+  number      Int
+  type        String // BAN, UNBAN, KICK, TIMEOUT, UNTIMEOUT, WARN
+  targetId    String
+  targetTag   String?
+  moderatorId String
+  moderatorTag String?
+  reason      String?
+  durationMs  Int?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, number])
+  @@index([guildId, targetId])
+}
+
+model StickyNote {
+  id            Int      @id @default(autoincrement())
+  guildId       String
+  channelId     String   @unique
+  title         String?
+  content       String
+  color         Int?
+  imageUrl      String?
+  lastMessageId String?
+  enabled       Boolean  @default(true)
+  createdById   String
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model Lockdown {
+  id         Int       @id @default(autoincrement())
+  guildId    String
+  channelId  String
+  roleId     String
+  // JSON: { "SendMessages": true | false | null, ... } — nilai overwrite sebelum dikunci
+  previous   String
+  lockedById String
+  reason     String?
+  unlockAt   DateTime?
+  createdAt  DateTime  @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, roleId])
+}
+
+// Konfigurasi global bot (token, client id, secret, url dashboard) — diatur lewat web
+model AppConfig {
+  key   String @id
+  value String
+}
+
+// Batas anti-spam per server. Nilai 0 pada max* = pemeriksaan itu dimatikan.
+model AutoMod {
+  guildId     String  @id
+  enabled     Boolean @default(false)
+  maxChars    Int     @default(1800)
+  maxLines    Int     @default(25)
+  maxMentions Int     @default(6)
+  strikes     Int     @default(3)
+  windowSec   Int     @default(60)
+  action      String  @default("TIMEOUT") // NONE, TIMEOUT, KICK, BAN
+  timeoutMin  Int     @default(60)
+  // JSON array ID channel yang dijaga. Kosong = AutoMod tidak berjalan di mana pun
+  channelIds  String  @default("[]")
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }

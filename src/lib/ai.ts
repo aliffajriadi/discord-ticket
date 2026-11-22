@@ -16,6 +16,7 @@ const BASE_RULES = `Kamu adalah asisten customer service yang menjawab tiket Dis
 - Jawab singkat, ramah, dan dalam bahasa yang dipakai user.
 - Hanya gunakan informasi dari skill di bawah dan isi percakapan. Jangan mengarang harga, stok, atau kebijakan.
 - Kamu tidak bisa melihat gambar atau file. Jika user mengirim [gambar] atau [file], katakan kamu tidak bisa membuka gambar/file dan tanyakan itu gambar/file apa. Jika ternyata bukti pembayaran, screenshot error, atau hal lain yang perlu dicek langsung, serahkan ke staff.
+- Jika perlu mengarahkan user ke channel, tulis #nama-channel persis seperti di skill (contoh: #payment). Jangan mengarang nama channel.
 - Jika kamu tidak tahu jawabannya, user minta bicara dengan manusia, atau butuh tindakan staff (pembayaran, refund, akses akun), tulis ${HANDOFF} di akhir jawaban.`;
 
 /** Pilih skill yang relevan: semua GLOBAL, REASON yang cocok, PRODUCT yang keyword-nya muncul di chat. */
@@ -33,6 +34,18 @@ export function pickSkills(skills: AiSkill[], reasonId: number | null, chatText:
         .some((k) => k && new RegExp(`(^|[^\\p{L}\\p{N}])${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "u").test(text));
     }
     return false;
+  });
+}
+
+// Nama channel tanpa emoji/hiasan, mis. "💳・payment" → "payment"
+const plainName = (name: string) => name.toLowerCase().replace(/[^\p{L}\p{N}_-]/gu, "");
+
+/** Ubah "#nama-channel" di jawaban AI jadi tag <#id> yang bisa diklik. Nama yang tidak ada dibiarkan. */
+export function linkChannels(text: string, channels: { id: string; name: string }[]): string {
+  return text.replace(/(?<![<\w])#([\p{L}\p{N}_-]+)/gu, (match, name: string) => {
+    const want = plainName(name);
+    const ch = channels.find((c) => c.name.toLowerCase() === name.toLowerCase()) ?? channels.find((c) => plainName(c.name) === want);
+    return ch ? `<#${ch.id}>` : match;
   });
 }
 
@@ -168,16 +181,26 @@ async function reply(trigger: Message<true>) {
 
     const handoff = answer.includes(HANDOFF);
     answer = answer.replaceAll(HANDOFF, "").trim();
+    answer = linkChannels(
+      answer,
+      channel.guild.channels.cache.filter((c) => !c.isThread()).map((c) => ({ id: c.id, name: c.name }))
+    );
 
     // Staff masuk saat AI sedang berpikir: jangan kirim
     const fresh = await prisma.ticket.findUnique({ where: { id: ticket.id }, select: { aiActive: true, status: true } });
     if (!fresh?.aiActive || fresh.status !== "OPEN") return;
 
-    for (let i = 0; i < answer.length; i += 1900) await channel.send(answer.slice(i, i + 1900));
+    // Jawaban AI tidak boleh ping siapa pun (user bisa menyuruh AI menulis @everyone). Tag #channel tetap jalan.
+    for (let i = 0; i < answer.length; i += 1900) {
+      await channel.send({ content: answer.slice(i, i + 1900), allowedMentions: { parse: [] } });
+    }
     if (handoff) {
       await prisma.ticket.update({ where: { id: ticket.id }, data: { aiActive: false } });
       const role = ticketSupportRole(ticket);
-      await channel.send(`${role ? `<@&${role}> ` : ""}Tiket ini butuh bantuan staff.`);
+      await channel.send({
+        content: `${role ? `<@&${role}> ` : ""}Tiket ini butuh bantuan staff.`,
+        allowedMentions: { roles: role ? [role] : [] },
+      });
     }
   } finally {
     running.delete(channelId);

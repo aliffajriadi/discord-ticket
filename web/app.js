@@ -930,7 +930,7 @@ function skillForm(s, reasons, done) {
       <div class="field" id="f-kw"><label>Keyword produk</label><input class="input" id="s-kw" maxlength="500" value="${esc(s?.keywords ?? "")}" placeholder="netflix, nf, netflix premium"><span class="hint">Dipisah koma. Skill dipakai jika salah satu keyword muncul di chat tiket.</span></div>
       <div class="field" id="f-desc"><label>Kapan dipakai</label><input class="input" id="s-desc" maxlength="500" value="${esc(s?.description ?? "")}" placeholder="Pertanyaan soal cara pembayaran, metode transfer, atau konfirmasi bayar"><span class="hint">AI hanya melihat deskripsi ini, lalu membaca isi skill kalau pertanyaan user cocok.</span></div>
       <div class="field"><label>Isi skill (markdown)</label><textarea class="textarea mono" id="s-content" rows="16" placeholder="# Tentang toko\n...">${esc(s?.content ?? "")}</textarea>
-        <span class="hint">Atau muat dari file: <input type="file" id="s-file" accept=".md,.txt,text/markdown,text/plain"></span></div>
+        <span class="hint">Tulis <b>#nama-channel</b> (mis. #payment) supaya AI bisa mengarahkan user ke channel itu. Atau muat dari file: <input type="file" id="s-file" accept=".md,.txt,text/markdown,text/plain"></span></div>
       <label class="check" style="border:none;padding:0"><input type="checkbox" id="s-on" ${s?.enabled === false ? "" : "checked"}> Aktif</label>
     </div>`,
     foot: `<button class="btn" data-close>Batal</button><button class="btn btn-primary" id="s-save">Simpan</button>`,

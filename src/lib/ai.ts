@@ -1,4 +1,4 @@
-import { Message } from "discord.js";
+import { ChannelType, Message, PermissionFlagsBits } from "discord.js";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
 import type { AiSkill } from "@prisma/client";
@@ -16,7 +16,7 @@ const BASE_RULES = `Kamu adalah asisten customer service yang menjawab tiket Dis
 - Jawab singkat, ramah, dan dalam bahasa yang dipakai user.
 - Hanya gunakan informasi dari skill di bawah dan isi percakapan. Jangan mengarang harga, stok, atau kebijakan.
 - Kamu tidak bisa melihat gambar atau file. Jika user mengirim [gambar] atau [file], katakan kamu tidak bisa membuka gambar/file dan tanyakan itu gambar/file apa. Jika ternyata bukti pembayaran, screenshot error, atau hal lain yang perlu dicek langsung, serahkan ke staff.
-- Jika perlu mengarahkan user ke channel, tulis #nama-channel persis seperti di skill (contoh: #payment). Jangan mengarang nama channel.
+- Jika perlu mengarahkan user ke channel, tulis tag channel persis dari "Daftar channel" (format <#angka>). Jangan mengarang channel yang tidak ada di daftar.
 - Jika kamu tidak tahu jawabannya, user minta bicara dengan manusia, atau butuh tindakan staff (pembayaran, refund, akses akun), tulis ${HANDOFF} di akhir jawaban.`;
 
 /** Pilih skill yang relevan: semua GLOBAL, REASON yang cocok, PRODUCT yang keyword-nya muncul di chat. */
@@ -40,8 +40,13 @@ export function pickSkills(skills: AiSkill[], reasonId: number | null, chatText:
 // Nama channel tanpa emoji/hiasan/pemisah, mis. "🛒・buy・autostore" → "buyautostore"
 const plainName = (name: string) => name.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 
-/** Ubah "#nama-channel" di jawaban AI jadi tag <#id> yang bisa diklik. Nama yang tidak ada dibiarkan. */
+/**
+ * Rapikan tag channel di jawaban AI: "#nama-channel" diubah jadi <#id> yang bisa diklik,
+ * dan <#id> yang tidak ada di daftar (salah ketik / channel privat) dibuang.
+ */
 export function linkChannels(text: string, channels: { id: string; name: string }[]): string {
+  const ids = new Set(channels.map((c) => c.id));
+  text = text.replace(/<#(\d+)>/g, (match, id: string) => (ids.has(id) ? match : ""));
   return text.replace(/(?<![<\w])#([\p{L}\p{N}_-]+)/gu, (match, name: string) => {
     const want = plainName(name);
     const ch = channels.find((c) => c.name.toLowerCase() === name.toLowerCase()) ?? channels.find((c) => plainName(c.name) === want);
@@ -118,10 +123,26 @@ async function reply(trigger: Message<true>) {
 
     const topics = skills.filter((s) => s.enabled && s.scope === "TOPIC");
 
+    // Channel yang bisa dilihat pembuat tiket, diambil langsung dari Discord
+    const creator = await channel.guild.members.fetch(ticket.creatorId).catch(() => null);
+    const visibleChannels = creator
+      ? channel.guild.channels.cache
+          .filter(
+            (c) =>
+              !c.isThread() &&
+              c.type !== ChannelType.GuildCategory &&
+              c.id !== channelId &&
+              !!c.permissionsFor(creator)?.has(PermissionFlagsBits.ViewChannel)
+          )
+          .first(100) // shortcut: maks 100 channel di prompt, cukup untuk server toko biasa
+          .map((c) => ({ id: c.id, name: c.name }))
+      : [];
+
     const system = [
       BASE_RULES,
       `Alasan tiket: ${ticket.reasonLabel ?? "-"}${ticket.reason?.description ? ` (${ticket.reason.description})` : ""}`,
       ...picked.map((s) => `## Skill: ${s.name}\n${s.content}`),
+      visibleChannels.length ? `## Daftar channel\n${visibleChannels.map((c) => `<#${c.id}> = ${c.name}`).join("\n")}` : "",
       topics.length
         ? `## Skill topik (muat dengan load_skill hanya jika relevan dengan pertanyaan user)\n${topics
             .map((s) => `- id ${s.id}: ${s.name} — ${s.description ?? ""}`)
@@ -181,10 +202,7 @@ async function reply(trigger: Message<true>) {
 
     const handoff = answer.includes(HANDOFF);
     answer = answer.replaceAll(HANDOFF, "").trim();
-    answer = linkChannels(
-      answer,
-      channel.guild.channels.cache.filter((c) => !c.isThread()).map((c) => ({ id: c.id, name: c.name }))
-    );
+    answer = linkChannels(answer, visibleChannels);
 
     // Staff masuk saat AI sedang berpikir: jangan kirim
     const fresh = await prisma.ticket.findUnique({ where: { id: ticket.id }, select: { aiActive: true, status: true } });

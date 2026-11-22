@@ -37,8 +37,8 @@ export function pickSkills(skills: AiSkill[], reasonId: number | null, chatText:
   });
 }
 
-// Nama channel tanpa emoji/hiasan, mis. "💳・payment" → "payment"
-const plainName = (name: string) => name.toLowerCase().replace(/[^\p{L}\p{N}_-]/gu, "");
+// Nama channel tanpa emoji/hiasan/pemisah, mis. "🛒・buy・autostore" → "buyautostore"
+const plainName = (name: string) => name.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 
 /** Ubah "#nama-channel" di jawaban AI jadi tag <#id> yang bisa diklik. Nama yang tidak ada dibiarkan. */
 export function linkChannels(text: string, channels: { id: string; name: string }[]): string {

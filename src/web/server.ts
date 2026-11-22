@@ -138,6 +138,8 @@ export async function startDashboard(bot: BotRuntime, opts: { setupCode: string 
       needsSetupCode: setupCode !== null,
       hasToken: !!c.token,
       hasSecret: !!c.clientSecret,
+      hasDeepseekKey: !!c.deepseekKey,
+      deepseekModel: c.deepseekModel ?? "",
       clientId: c.clientId ?? null,
       dashboardUrl: baseUrl,
       redirectUri: `${baseUrl}/auth/callback`,
@@ -228,6 +230,23 @@ export async function startDashboard(bot: BotRuntime, opts: { setupCode: string 
       const c = await loadAppConfig();
       const client = getClient();
       res.json(await deployCommands(c.token!, c.clientId!, [...client.guilds.cache.keys()], true));
+    })
+  );
+
+  setup.put(
+    "/ai",
+    h(async (req, res) => {
+      authorize(req);
+      // Hanya field yang dikirim yang diubah; string kosong = hapus
+      const values: { deepseekKey?: string; deepseekModel?: string } = {};
+      if ("deepseekKey" in req.body) values.deepseekKey = str(req.body.deepseekKey, 200) ?? "";
+      if ("deepseekModel" in req.body) {
+        const model = str(req.body.deepseekModel, 100) ?? "";
+        if (model && !/^[\w.:/-]+$/.test(model)) throw new HttpError(400, "Nama model tidak valid");
+        values.deepseekModel = model;
+      }
+      await saveAppConfig(values);
+      res.json(await statusOf());
     })
   );
 
@@ -807,6 +826,78 @@ export async function startDashboard(bot: BotRuntime, opts: { setupCode: string 
       const panel = await buildPanelMessage(guild, type, { title: str(req.body.title, 200), description: str(req.body.description) });
       if (!panel) throw new HttpError(400, "Belum ada alasan tiket");
       await (channel as TextChannel).send(panel);
+      res.json({ ok: true });
+    })
+  );
+
+  // ── AI penjawab tiket ─────────────────────────────────────────────────────
+  const SKILL_SCOPES = ["GLOBAL", "REASON", "PRODUCT", "TOPIC"];
+
+  g.get(
+    "/ai",
+    h(async (_req, res) => {
+      const guild = guildOf(res);
+      const [row, skills, c] = await Promise.all([
+        prisma.guild.findUnique({ where: { id: guild.id } }),
+        prisma.aiSkill.findMany({ where: { guildId: guild.id }, orderBy: { id: "asc" } }),
+        loadAppConfig(),
+      ]);
+      res.json({ enabled: !!row?.aiEnabled, hasKey: !!c.deepseekKey, skills });
+    })
+  );
+
+  g.put(
+    "/ai",
+    h(async (req, res) => {
+      await prisma.guild.update({ where: { id: guildOf(res).id }, data: { aiEnabled: req.body.enabled === true } });
+      res.json({ ok: true });
+    })
+  );
+
+  const skillData = async (guildId: string, body: any) => {
+    const name = str(body.name, 100);
+    const content = str(body.content, 50_000);
+    const scope = String(body.scope);
+    if (!name) throw new HttpError(400, "Nama skill wajib diisi");
+    if (!content) throw new HttpError(400, "Isi skill wajib diisi");
+    if (!SKILL_SCOPES.includes(scope)) throw new HttpError(400, "Tipe skill tidak valid");
+    let reasonId: number | null = null;
+    if (scope === "REASON") {
+      const reason = await prisma.ticketReason.findUnique({ where: { id: parseInt(body.reasonId, 10) || 0 } });
+      if (!reason || reason.guildId !== guildId) throw new HttpError(400, "Pilih alasan tiket");
+      reasonId = reason.id;
+    }
+    const keywords = scope === "PRODUCT" ? str(body.keywords, 500) : null;
+    if (scope === "PRODUCT" && !keywords) throw new HttpError(400, "Keyword produk wajib diisi");
+    const description = scope === "TOPIC" ? str(body.description, 500) : null;
+    if (scope === "TOPIC" && !description) throw new HttpError(400, "Deskripsi kapan skill dipakai wajib diisi");
+    return { name, content, scope, reasonId, keywords, description, enabled: body.enabled !== false };
+  };
+
+  g.post(
+    "/ai/skills",
+    h(async (req, res) => {
+      const guildId = guildOf(res).id;
+      res.json(await prisma.aiSkill.create({ data: { ...(await skillData(guildId, req.body)), guildId } }));
+    })
+  );
+
+  g.put(
+    "/ai/skills/:id",
+    h(async (req, res) => {
+      const guildId = guildOf(res).id;
+      const skill = await prisma.aiSkill.findUnique({ where: { id: parseInt(req.params.id, 10) || 0 } });
+      if (!skill || skill.guildId !== guildId) throw new HttpError(404, "Skill tidak ditemukan");
+      res.json(await prisma.aiSkill.update({ where: { id: skill.id }, data: await skillData(guildId, req.body) }));
+    })
+  );
+
+  g.delete(
+    "/ai/skills/:id",
+    h(async (req, res) => {
+      const skill = await prisma.aiSkill.findUnique({ where: { id: parseInt(req.params.id, 10) || 0 } });
+      if (!skill || skill.guildId !== guildOf(res).id) throw new HttpError(404, "Skill tidak ditemukan");
+      await prisma.aiSkill.delete({ where: { id: skill.id } });
       res.json({ ok: true });
     })
   );

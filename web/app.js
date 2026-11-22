@@ -174,6 +174,7 @@ const PAGES = {
   automod: { label: "AutoMod", ico: "🛡️", section: "Channel", render: renderAutomod },
   sticky: { label: "Sticky Notes", ico: "📌", section: "Channel", render: renderSticky },
   reasons: { label: "Alasan & Panel", ico: "🏷️", section: "Konfigurasi", render: renderReasons },
+  ai: { label: "AI Agent", ico: "🤖", section: "Konfigurasi", render: renderAi },
   texts: { label: "Teks Bot", ico: "✏️", section: "Konfigurasi", render: renderTexts },
   emojis: { label: "Emoji", ico: "😀", section: "Konfigurasi", render: renderEmojis },
   settings: { label: "Pengaturan", ico: "⚙️", section: "Konfigurasi", render: renderSettings },
@@ -866,6 +867,100 @@ function panelForm() {
   });
 }
 
+// ── AI Agent ────────────────────────────────────────────────────────────────
+const SCOPE_LABEL = { GLOBAL: "Briefing utama", REASON: "Alasan tiket", PRODUCT: "Produk", TOPIC: "Topik umum" };
+
+async function renderAi(main) {
+  const [ai, reasons] = await Promise.all([gapi("/ai"), gapi("/reasons")]);
+  const reasonLabel = (id) => reasons.find((r) => r.id === id)?.label ?? "?";
+  const target = (s) => (s.scope === "REASON" ? `🏷️ ${esc(reasonLabel(s.reasonId))}` : s.scope === "PRODUCT" ? `🔑 ${esc(s.keywords)}` : s.scope === "TOPIC" ? `💡 ${esc(s.description)}` : "Semua tiket");
+  main.innerHTML = `
+    ${pageHead("AI Agent", "AI DeepSeek menjawab tiket memakai skill markdown di bawah", '<button class="btn btn-primary" id="new">➕ Skill baru</button>')}
+    ${ai.hasKey ? "" : `<div class="card card-pad" style="margin-bottom:16px">⚠️ API key DeepSeek belum diisi. Pemilik aplikasi bot bisa mengisinya di <a href="#/bot">Pengaturan Bot</a>.</div>`}
+    <div class="card card-pad" style="margin-bottom:16px">
+      <label class="check" style="border:none;padding:0"><input type="checkbox" id="ai-on" ${ai.enabled ? "checked" : ""}> Aktifkan AI di server ini</label>
+      <p class="muted small" style="margin-top:8px">AI membalas pesan pembuat tiket dan berhenti begitu staff mengirim pesan di tiket itu. Jika AI tidak yakin, dia memanggil role staff. Skill produk dipakai saat salah satu keyword-nya muncul di chat. Skill topik umum hanya dibaca AI kalau deskripsinya relevan dengan pertanyaan user.</p>
+    </div>
+    <div class="card">
+      ${
+        ai.skills.length
+          ? `<div class="table-wrap"><table><thead><tr><th>Nama</th><th>Tipe</th><th>Dipakai untuk</th><th>Status</th><th></th></tr></thead><tbody>
+          ${ai.skills
+            .map(
+              (s) => `<tr><td><b>${esc(s.name)}</b><div class="muted small">${s.content.length} karakter</div></td>
+              <td>${SCOPE_LABEL[s.scope] ?? esc(s.scope)}</td><td>${target(s)}</td>
+              <td><span class="badge ${s.enabled ? "green" : ""}">${s.enabled ? "Aktif" : "Nonaktif"}</span></td>
+              <td style="text-align:right;white-space:nowrap"><button class="btn btn-sm" data-edit="${s.id}">Edit</button> <button class="btn btn-sm btn-danger" data-del="${s.id}">Hapus</button></td></tr>`
+            )
+            .join("")}</tbody></table></div>`
+          : `<div class="empty"><div class="big">🤖</div>Belum ada skill. Mulai dengan satu <b>Briefing utama</b> yang menjelaskan bisnismu.</div>`
+      }
+    </div>`;
+  const byId = Object.fromEntries(ai.skills.map((s) => [s.id, s]));
+  const refresh = () => renderAi(main);
+  main.querySelector("#ai-on").onchange = (e) => {
+    const box = e.currentTarget;
+    run(box, () => gapi("/ai", { method: "PUT", body: { enabled: box.checked } }), box.checked ? "AI diaktifkan" : "AI dimatikan");
+  };
+  main.querySelector("#new").onclick = () => skillForm(null, reasons, refresh);
+  main.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => skillForm(byId[b.dataset.edit], reasons, refresh)));
+  main.querySelectorAll("[data-del]").forEach(
+    (b) =>
+      (b.onclick = async () => {
+        if (!(await confirmModal("Hapus skill?", `Skill "${byId[b.dataset.del].name}" akan dihapus.`))) return;
+        if (await run(b, () => gapi(`/ai/skills/${b.dataset.del}`, { method: "DELETE" }), "Skill dihapus")) refresh();
+      })
+  );
+}
+
+function skillForm(s, reasons, done) {
+  openModal({
+    title: s ? "Edit skill" : "Skill baru",
+    wide: true,
+    body: `<div class="stack">
+      <div class="form-grid">
+        <div class="field"><label>Nama</label><input class="input" id="s-name" maxlength="100" value="${esc(s?.name ?? "")}" placeholder="Briefing toko"></div>
+        <div class="field"><label>Tipe</label><select class="select" id="s-scope">${Object.entries(SCOPE_LABEL)
+          .map(([k, v]) => `<option value="${k}" ${s?.scope === k ? "selected" : ""}>${v}</option>`)
+          .join("")}</select></div>
+      </div>
+      <div class="field" id="f-reason"><label>Alasan tiket</label><select class="select" id="s-reason">${reasons
+        .map((r) => `<option value="${r.id}" ${s?.reasonId === r.id ? "selected" : ""}>${esc(r.label)}</option>`)
+        .join("")}</select></div>
+      <div class="field" id="f-kw"><label>Keyword produk</label><input class="input" id="s-kw" maxlength="500" value="${esc(s?.keywords ?? "")}" placeholder="netflix, nf, netflix premium"><span class="hint">Dipisah koma. Skill dipakai jika salah satu keyword muncul di chat tiket.</span></div>
+      <div class="field" id="f-desc"><label>Kapan dipakai</label><input class="input" id="s-desc" maxlength="500" value="${esc(s?.description ?? "")}" placeholder="Pertanyaan soal cara pembayaran, metode transfer, atau konfirmasi bayar"><span class="hint">AI hanya melihat deskripsi ini, lalu membaca isi skill kalau pertanyaan user cocok.</span></div>
+      <div class="field"><label>Isi skill (markdown)</label><textarea class="textarea mono" id="s-content" rows="16" placeholder="# Tentang toko\n...">${esc(s?.content ?? "")}</textarea>
+        <span class="hint">Atau muat dari file: <input type="file" id="s-file" accept=".md,.txt,text/markdown,text/plain"></span></div>
+      <label class="check" style="border:none;padding:0"><input type="checkbox" id="s-on" ${s?.enabled === false ? "" : "checked"}> Aktif</label>
+    </div>`,
+    foot: `<button class="btn" data-close>Batal</button><button class="btn btn-primary" id="s-save">Simpan</button>`,
+    onMount: (m, close) => {
+      const $ = (id) => m.querySelector(id);
+      const sync = () => {
+        $("#f-reason").style.display = $("#s-scope").value === "REASON" ? "" : "none";
+        $("#f-kw").style.display = $("#s-scope").value === "PRODUCT" ? "" : "none";
+        $("#f-desc").style.display = $("#s-scope").value === "TOPIC" ? "" : "none";
+      };
+      $("#s-scope").onchange = sync;
+      sync();
+      $("#s-file").onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        $("#s-content").value = await file.text();
+        if (!$("#s-name").value) $("#s-name").value = file.name.replace(/\.(md|txt)$/i, "");
+      };
+      $("#s-save").onclick = async (e) => {
+        const body = { name: $("#s-name").value, scope: $("#s-scope").value, reasonId: $("#s-reason").value, keywords: $("#s-kw").value, description: $("#s-desc").value, content: $("#s-content").value, enabled: $("#s-on").checked };
+        const ok = await run(e.currentTarget, () => gapi(s ? `/ai/skills/${s.id}` : "/ai/skills", { method: s ? "PUT" : "POST", body }), "Skill disimpan");
+        if (ok) {
+          close();
+          done();
+        }
+      };
+    },
+  });
+}
+
 // ── Texts ───────────────────────────────────────────────────────────────────
 async function renderTexts(main) {
   const d = await gapi("/texts");
@@ -1127,7 +1222,29 @@ async function renderBotPage() {
         <button class="btn btn-primary" id="save">Simpan & restart bot</button>
       </div>
     </div>
+    <div class="card card-pad stack" style="margin-top:16px">
+      <div class="field"><label>API Key DeepSeek (AI Agent)</label><input class="input mono" id="c-ds" type="password" autocomplete="off" placeholder="${st.hasDeepseekKey ? "Tersimpan — isi untuk mengganti" : "sk-... dari platform.deepseek.com"}"><span class="hint">Dipakai semua server. Skill AI diatur per server di menu AI Agent.</span></div>
+      <div class="field"><label>Model</label><input class="input mono" id="c-model" list="ds-models" value="${esc(st.deepseekModel)}" placeholder="deepseek-v4-flash">
+        <datalist id="ds-models"><option value="deepseek-v4-flash"><option value="deepseek-v4-pro"><option value="deepseek-chat"></datalist>
+        <span class="hint">Kosongkan = deepseek-v4-flash (paling murah). <b>deepseek-v4-pro</b> lebih pintar tapi lebih mahal.</span></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        ${st.hasDeepseekKey ? '<button class="btn btn-danger" id="ds-del">Hapus key</button>' : ""}
+        <button class="btn btn-primary" id="ds-save">Simpan AI</button>
+      </div>
+    </div>
   </div>`;
+  const saveDs = async (btn, body, msg) => {
+    if (await run(btn, () => api("/setup/ai", { method: "PUT", body }), msg)) renderBotPage();
+  };
+  $app.querySelector("#ds-save").onclick = (e) => {
+    const key = $app.querySelector("#c-ds").value.trim();
+    if (!key && !st.hasDeepseekKey) return toast("Isi API key dulu", true);
+    const body = { deepseekModel: $app.querySelector("#c-model").value.trim() };
+    if (key) body.deepseekKey = key; // kosong = key lama tetap dipakai
+    saveDs(e.currentTarget, body, "Pengaturan AI disimpan");
+  };
+  const dsDel = $app.querySelector("#ds-del");
+  if (dsDel) dsDel.onclick = (e) => saveDs(e.currentTarget, { deepseekKey: "" }, "API key dihapus");
   bindCopy($app);
   $app.querySelector("#save").onclick = async (e) => {
     const out = await run(e.currentTarget, () => api("/setup/config", { method: "PUT", body: collectConfig($app) }));

@@ -18,6 +18,7 @@ model Guild {
   accentColor     Int?
   texts           String?
   emojis          String?
+  aiEnabled       Boolean  @default(false)
   createdAt       DateTime @default(now())
 
   reasons   TicketReason[]
@@ -26,6 +27,7 @@ model Guild {
   stickies  StickyNote[]
   lockdowns Lockdown[]
   automod   AutoMod?
+  skills    AiSkill[]
 }
 
 model TicketReason {
@@ -37,8 +39,9 @@ model TicketReason {
   categoryId    String
   supportRoleId String
 
-  guild   Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild   Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
   tickets Ticket[]
+  skills  AiSkill[]
 
   @@unique([guildId, value])
 }
@@ -55,6 +58,8 @@ model Ticket {
   // Disalin saat tiket dibuat, supaya staff tetap berhak walau alasan tiket dihapus
   supportRoleId String?
   claimedById String?
+  // AI berhenti menjawab begitu staff mengirim pesan
+  aiActive    Boolean @default(true)
 
   status     String    @default("OPEN")
   createdAt  DateTime  @default(now())
@@ -158,4 +163,24 @@ model AutoMod {
   channelIds  String  @default("[]")
 
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Skill (markdown) untuk AI penjawab tiket. GLOBAL = briefing utama,
+// REASON = khusus alasan tiket, PRODUCT = dipakai jika salah satu keyword muncul di chat,
+// TOPIC = AI hanya melihat deskripsinya dan memuat isinya sendiri (tool call) jika relevan.
+model AiSkill {
+  id       Int     @id @default(autoincrement())
+  guildId  String
+  name     String
+  scope       String // GLOBAL, REASON, PRODUCT, TOPIC
+  reasonId    Int?
+  keywords    String? // dipisah koma, untuk PRODUCT
+  description String? // kapan skill dipakai, untuk TOPIC
+  content  String
+  enabled  Boolean @default(true)
+
+  guild  Guild         @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  reason TicketReason? @relation(fields: [reasonId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
 }

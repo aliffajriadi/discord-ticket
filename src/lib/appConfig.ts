@@ -6,6 +6,8 @@ const KEYS = {
   clientId: "DISCORD_CLIENT_ID",
   clientSecret: "DISCORD_CLIENT_SECRET",
   dashboardUrl: "DASHBOARD_URL",
+  deepseekKey: "DEEPSEEK_API_KEY",
+  deepseekModel: "DEEPSEEK_MODEL",
 } as const;
 
 export type ConfigKey = keyof typeof KEYS;

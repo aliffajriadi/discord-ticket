@@ -879,7 +879,7 @@ async function renderAi(main) {
     ${ai.hasKey ? "" : `<div class="card card-pad" style="margin-bottom:16px">⚠️ API key DeepSeek belum diisi. Pemilik aplikasi bot bisa mengisinya di <a href="#/bot">Pengaturan Bot</a>.</div>`}
     <div class="card card-pad" style="margin-bottom:16px">
       <label class="check" style="border:none;padding:0"><input type="checkbox" id="ai-on" ${ai.enabled ? "checked" : ""}> Aktifkan AI di server ini</label>
-      <p class="muted small" style="margin-top:8px">AI membalas pesan pembuat tiket dan berhenti begitu staff mengirim pesan di tiket itu. Jika AI tidak yakin, dia memanggil role staff. Skill produk dipakai saat salah satu keyword-nya muncul di chat. Skill topik umum hanya dibaca AI kalau deskripsinya relevan dengan pertanyaan user.</p>
+      <p class="muted small" style="margin-top:8px">AI menyapa saat tiket dibuat, membalas pesan pembuat tiket, dan berhenti begitu staff mengirim pesan di tiket itu. Jika AI bingung, muncul tombol Panggil Staff; jika butuh tindakan staff, AI langsung memanggil role staff. Skill produk otomatis dipakai saat keyword-nya muncul di chat; kalau tidak, AI menilai sendiri dari nama dan keyword-nya. Skill topik umum hanya dibaca AI kalau deskripsinya relevan dengan pertanyaan user.</p>
     </div>
     <div class="card">
       ${
@@ -927,7 +927,7 @@ function skillForm(s, reasons, done) {
       <div class="field" id="f-reason"><label>Alasan tiket</label><select class="select" id="s-reason">${reasons
         .map((r) => `<option value="${r.id}" ${s?.reasonId === r.id ? "selected" : ""}>${esc(r.label)}</option>`)
         .join("")}</select></div>
-      <div class="field" id="f-kw"><label>Keyword produk</label><input class="input" id="s-kw" maxlength="500" value="${esc(s?.keywords ?? "")}" placeholder="netflix, nf, netflix premium"><span class="hint">Dipisah koma. Skill dipakai jika salah satu keyword muncul di chat tiket.</span></div>
+      <div class="field" id="f-kw"><label>Keyword produk</label><input class="input" id="s-kw" maxlength="500" value="${esc(s?.keywords ?? "")}" placeholder="netflix, nf, netflix premium"><span class="hint">Dipisah koma. Otomatis dipakai jika keyword muncul di chat; kalau tidak, AI menilai sendiri dari nama dan keyword.</span></div>
       <div class="field" id="f-desc"><label>Kapan dipakai</label><input class="input" id="s-desc" maxlength="500" value="${esc(s?.description ?? "")}" placeholder="Pertanyaan soal cara pembayaran, metode transfer, atau konfirmasi bayar"><span class="hint">AI hanya melihat deskripsi ini, lalu membaca isi skill kalau pertanyaan user cocok.</span></div>
       <div class="field"><label>Isi skill (markdown)</label><textarea class="textarea mono" id="s-content" rows="16" placeholder="# Tentang toko\n...">${esc(s?.content ?? "")}</textarea>
         <span class="hint">AI otomatis tahu semua channel yang bisa dilihat buyer, cukup sebut namanya (mis. "arahkan ke channel buy-autostore"). Atau muat dari file: <input type="file" id="s-file" accept=".md,.txt,text/markdown,text/plain"></span></div>
@@ -1223,16 +1223,26 @@ async function renderBotPage() {
       </div>
     </div>
     <div class="card card-pad stack" style="margin-top:16px">
+      <div class="field"><label for="c-name">Nama bot</label><div style="display:flex;gap:8px"><input class="input" id="c-name" minlength="2" maxlength="32" value="${esc(st.bot.name ?? "")}" ${st.bot.name ? "" : "disabled"}><button class="btn btn-primary" id="name-save" ${st.bot.name ? "" : "disabled"}>Simpan nama</button></div>
+        <span class="hint">Berlaku di semua server. Discord membatasi sekitar 2 kali ganti per jam.</span></div>
+    </div>
+    <div class="card card-pad stack" style="margin-top:16px">
       <div class="field"><label>API Key DeepSeek (AI Agent)</label><input class="input mono" id="c-ds" type="password" autocomplete="off" placeholder="${st.hasDeepseekKey ? "Tersimpan — isi untuk mengganti" : "sk-... dari platform.deepseek.com"}"><span class="hint">Dipakai semua server. Skill AI diatur per server di menu AI Agent.</span></div>
-      <div class="field"><label>Model</label><input class="input mono" id="c-model" list="ds-models" value="${esc(st.deepseekModel)}" placeholder="deepseek-v4-flash">
-        <datalist id="ds-models"><option value="deepseek-v4-flash"><option value="deepseek-v4-pro"><option value="deepseek-chat"></datalist>
-        <span class="hint">Kosongkan = deepseek-v4-flash (paling murah). <b>deepseek-v4-pro</b> lebih pintar tapi lebih mahal.</span></div>
+      <div class="field"><label>Model</label><input class="input mono" id="c-model" list="ds-models" value="${esc(st.deepseekModel)}" placeholder="deepseek-flash">
+        <datalist id="ds-models"><option value="deepseek-flash"><option value="deepseek-v4-pro"></datalist>
+        <span class="hint">Kosongkan = deepseek-flash (murah, bisa membaca gambar). <b>deepseek-v4-pro</b> tidak bisa membaca gambar.</span></div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         ${st.hasDeepseekKey ? '<button class="btn btn-danger" id="ds-del">Hapus key</button>' : ""}
         <button class="btn btn-primary" id="ds-save">Simpan AI</button>
       </div>
     </div>
   </div>`;
+  $app.querySelector("#name-save").onclick = async (e) => {
+    const name = $app.querySelector("#c-name").value.trim();
+    if (!(await run(e.currentTarget, () => api("/setup/name", { method: "PUT", body: { name } }), "Nama bot diganti"))) return;
+    state.me = await api("/me").catch(() => state.me);
+    renderBotPage();
+  };
   const saveDs = async (btn, body, msg) => {
     if (await run(btn, () => api("/setup/ai", { method: "PUT", body }), msg)) renderBotPage();
   };

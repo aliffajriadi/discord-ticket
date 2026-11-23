@@ -143,7 +143,7 @@ export async function startDashboard(bot: BotRuntime, opts: { setupCode: string 
       clientId: c.clientId ?? null,
       dashboardUrl: baseUrl,
       redirectUri: `${baseUrl}/auth/callback`,
-      bot: { status: bot.status, error: bot.error, tag: bot.client?.user.tag ?? null },
+      bot: { status: bot.status, error: bot.error, tag: bot.client?.user.tag ?? null, name: bot.client?.user.username ?? null },
     };
   };
 
@@ -230,6 +230,20 @@ export async function startDashboard(bot: BotRuntime, opts: { setupCode: string 
       const c = await loadAppConfig();
       const client = getClient();
       res.json(await deployCommands(c.token!, c.clientId!, [...client.guilds.cache.keys()], true));
+    })
+  );
+
+  setup.put(
+    "/name",
+    h(async (req, res) => {
+      authorize(req);
+      const name = str(req.body.name, 100);
+      if (!name || name.length < 2 || name.length > 32) throw new HttpError(400, "Nama bot harus 2-32 karakter");
+      // Discord membatasi ganti username (sekitar 2x per jam) dan menolak nama tertentu
+      await getClient().user.setUsername(name).catch((err: Error) => {
+        throw new HttpError(400, `Discord menolak nama ini: ${err.message}`);
+      });
+      res.json(await statusOf());
     })
   );
 

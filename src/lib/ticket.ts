@@ -20,6 +20,7 @@ import prisma from "../lib/prisma.js";
 import { sendLog, ensureGuild, isTicketStaff, ticketSupportRole } from "../lib/utils.js";
 import { generateTranscript, ticketLabel, reasonLabel } from "./transcript.js";
 import { setOpenTicket, flushMessages } from "./messageQueue.js";
+import { greetTicket } from "./ai.js";
 import { getConfig, fmt, GuildConfig } from "./guildConfig.js";
 
 // Cooldown map to prevent spam ticket creation (userId -> timestamp)
@@ -254,6 +255,9 @@ export async function createTicket(
       embeds: [welcomeEmbed],
       components: [openTicketButtons(ticket.id, cfg)],
     });
+
+    // Tidak ditunggu: lambat/gagalnya AI tidak boleh menahan pembuatan tiket
+    void greetTicket(channel).catch((err) => console.error("[ai] Gagal menyapa tiket:", err));
 
     await sendLog(
       guild,

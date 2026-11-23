@@ -17,6 +17,7 @@ import {
   reasonSelectMenu,
   openTicketButtons,
 } from "../lib/ticket.js";
+import { callStaff } from "../lib/ai.js";
 import { generateTranscript } from "../lib/transcript.js";
 import { errorEmbed, successEmbed, isTicketStaff, ticketSupportRole, hasSetupPermission, ensureGuild } from "../lib/utils.js";
 import { getConfig } from "../lib/guildConfig.js";
@@ -103,7 +104,7 @@ export async function handleSelectReason(interaction: StringSelectMenuInteractio
 }
 
 /**
- * Handles ticket action buttons: close, reopen, delete, claim, transcript.
+ * Handles ticket action buttons: close, reopen, delete, claim, transcript, callstaff.
  * Pengecekan izin dilakukan di lib/ticket.ts.
  */
 export async function handleTicketButton(interaction: ButtonInteraction, action: string, ticketId: number) {
@@ -134,6 +135,23 @@ export async function handleTicketButton(interaction: ButtonInteraction, action:
     // Jika sukses, channel sudah terhapus — tidak perlu balasan
     if (!result.success) return respond(result);
     return;
+  }
+
+  if (action === "callstaff") {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, include: { reason: true } });
+    if (!ticket || ticket.guildId !== guild.id || ticket.channelId !== interaction.channelId || !interaction.channel) {
+      return respond({ success: false, message: "Tiket tidak ditemukan." });
+    }
+    if (interaction.user.id !== ticket.creatorId && !(await isTicketStaff(guild, member, ticketSupportRole(ticket)))) {
+      return respond({ success: false, message: "Hanya pembuat tiket atau staff yang dapat memanggil staff." });
+    }
+    const called = await callStaff(interaction.channel, ticket);
+    await interaction.message.edit({ components: [] }).catch(() => null);
+    return respond(
+      called
+        ? { success: true, message: "Staff sudah dipanggil. Mohon tunggu ya." }
+        : { success: false, message: "Staff sudah dipanggil atau sedang menangani tiket ini." }
+    );
   }
 
   if (action === "transcript") {
